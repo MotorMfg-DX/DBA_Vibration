@@ -1,3 +1,5 @@
+# POAの計算
+
 import numpy as np
 from nptdms import TdmsFile
 from nptdms import tdms
@@ -9,7 +11,7 @@ wf_increment = 0.0001953125     # Time Resolution (Setting)
 num_sample = 5120       # Number of Samplings
 
 ### read tdms file ###
-filename = '★00400750.tdms'
+filename = '00100243.tdms'
 tdms_file = TdmsFile.read(filename)
 df_actwave = tdms_file.as_dataframe(time_index=False)
 df_actwave.columns = ['CW', 'CCW']
@@ -37,8 +39,11 @@ plt.xlabel('Time [sec]')
 plt.ylabel('Output [V]')
 # plt.ylim(-2, 2)
 
+# plt.show()
+
 ### FFT ###
 # 窓関数を用いない。0パディングしてそのままの波形が連続であると仮定する。
+# 実波形に原因不明のオフセットが発生しているため、0パディングではなく波形の平均値で埋める。
 # 設備で使用している窓関数(Hanning)が狙っている周波数特性に対して適切かどうか不明なため。
 # 対称の周波数特性を整理した上で窓関数の吟味を行う。
 # 今回はFFT→OAと計算していくので、周波数領域における振幅値が重要になる。
@@ -50,7 +55,7 @@ padding_dt = 1 / fft_fs     # Time resolution after 0 padding [s]
 
 # 0 Padding
 df_0padding = pd.DataFrame(index=range(padding_num_sample - num_sample), columns=['Time', 'CW', 'CCW'])
-df_0padding.fillna(0, inplace=True)
+df_0padding.fillna({'Time': 0, 'CW':df_actwave['CW'].mean(), 'CCW':df_actwave['CCW'].mean()}, inplace=True)
 df_0padding_wave = df_actwave.copy()
 df_0padding_wave = pd.concat([df_0padding_wave, df_0padding], ignore_index=True)
 
@@ -65,6 +70,26 @@ acf_CCW = (df_actwave['CCW'].sum() / num_sample) / (df_0padding_wave['CCW'].sum(
 df_0padding_wave['CW'] = df_0padding_wave['CW'] * acf_CW
 df_0padding_wave['CCW'] = df_0padding_wave['CCW'] * acf_CCW
 
+### Show vibration graphs after padding ###
+plt.figure()
+plt.subplots_adjust(wspace=0.4, hspace=0.6)
+
+plt.subplot(2, 1, 1)
+plt.plot(df_0padding_wave['Time'], df_0padding_wave['CW'])
+plt.title('CW')
+plt.xlabel('Time [sec]')
+plt.ylabel('Output [V]')
+# plt.ylim(-2, 2)
+
+plt.subplot(2, 1, 2)
+plt.plot(df_0padding_wave['Time'], df_0padding_wave['CCW'])
+plt.title('CCW')
+plt.xlabel('Time [sec]')
+plt.ylabel('Output [V]')
+# plt.ylim(-2, 2)
+
+# plt.show()
+
 # FFT
 df_fft = pd.DataFrame(columns=['freq', 'CW', 'CCW', 'rCW', 'rCCW'])     # rCW, rCCWはFFT実部の波形
 df_fft['CW'] = np.fft.fft(df_0padding_wave['CW'], axis=0)
@@ -73,8 +98,17 @@ df_fft['freq'] = np.fft.fftfreq(padding_num_sample, d=padding_dt)
 df_fft['rCW'] = df_fft['CW'].abs() / (padding_num_sample / 2)
 df_fft['rCCW'] = df_fft['CCW'].abs() / (padding_num_sample / 2)
 
-### POA ###
-
+# POA
+# POA_CW = 0
+# POA_CCW = 0
+# j = 0       # Index
+# for i in df_fft['freq']:
+#     if 300 <= i <= 1500:
+#         POA_CW += df_fft.iat[j, 3]
+#         POA_CCW += df_fft.iat[j, 4]
+#     j += 1
+# print(POA_CW )
+# print(POA_CCW)
 
 ### Show graphs ###
 plt.figure()
