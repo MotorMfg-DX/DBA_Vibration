@@ -1,17 +1,16 @@
-# POAの計算
-
 import numpy as np
 from nptdms import TdmsFile
 from nptdms import tdms
 import pandas as pd
 import matplotlib.pyplot as plt
+import math
 
 gain = 0.00152587890625     # Gain (Setting)
 wf_increment = 0.0001953125     # Time Resolution (Setting)
 num_sample = 5120       # Number of Samplings
 
 ### read tdms file ###
-filename = '00100243.tdms'
+filename = '00401324.tdms'
 tdms_file = TdmsFile.read(filename)
 df_actwave = tdms_file.as_dataframe(time_index=False)
 df_actwave.columns = ['CW', 'CCW']
@@ -91,24 +90,33 @@ plt.ylabel('Output [V]')
 # plt.show()
 
 # FFT
-df_fft = pd.DataFrame(columns=['freq', 'CW', 'CCW', 'rCW', 'rCCW'])     # rCW, rCCWはFFT実部の波形
+df_fft = pd.DataFrame(columns=['freq', 'CW', 'CCW', 'CW_PSD', 'CCW_PSD'])     # CW_PSD, CCW_PSDはPSD
 df_fft['CW'] = np.fft.fft(df_0padding_wave['CW'], axis=0)
 df_fft['CCW'] = np.fft.fft(df_0padding_wave['CCW'], axis=0)
 df_fft['freq'] = np.fft.fftfreq(padding_num_sample, d=padding_dt)
-df_fft['rCW'] = df_fft['CW'].abs() / (padding_num_sample / 2)
-df_fft['rCCW'] = df_fft['CCW'].abs() / (padding_num_sample / 2)
+df_fft['CW_PSD'] = (df_fft['CW'].abs() / (padding_num_sample / 2))**2
+df_fft['CCW_PSD'] = (df_fft['CCW'].abs() / (padding_num_sample / 2))**2
 
 # POA
-# POA_CW = 0
-# POA_CCW = 0
-# j = 0       # Index
-# for i in df_fft['freq']:
-#     if 300 <= i <= 1500:
-#         POA_CW += df_fft.iat[j, 3]
-#         POA_CCW += df_fft.iat[j, 4]
-#     j += 1
-# print(POA_CW )
-# print(POA_CCW)
+POA_CW = 0
+POA_CCW = 0
+l_freq = []
+l_POA_CW = []
+l_POA_CCW = []
+j = 0       # Index
+for i in df_fft['freq']:
+    if 300 <= i <= 1500:
+        POA_CW += df_fft.iat[j, 3]
+        POA_CCW += df_fft.iat[j, 4]
+        l_freq.append(i)
+        l_POA_CW.append(POA_CW)
+        l_POA_CCW.append(POA_CCW)
+    j += 1
+df_POA = pd.DataFrame(data={'freq': l_freq, 'CW': l_POA_CW, 'CCW': l_POA_CCW},
+    columns=['freq', 'CW', 'CCW'])
+print(math.sqrt(POA_CW))
+print(math.sqrt(POA_CCW))
+print(df_POA)
 
 ### Show graphs ###
 plt.figure()
@@ -119,13 +127,15 @@ plt.plot(df_fft.iloc[1: int(padding_num_sample / 2), [0]], df_fft.iloc[1: int(pa
 plt.yscale('log')
 plt.title('CW')
 plt.xlabel('f [Hz]')
-plt.ylabel('PSD [(m/s^2)^2/Hz]')
+plt.ylabel('PSD [V^2/Hz]')
+plt.xlim(0,2500)
 
 plt.subplot(2, 1, 2)
 plt.plot(df_fft.iloc[1: int(padding_num_sample / 2), [0]], df_fft.iloc[1: int(padding_num_sample / 2), [4]])
 plt.yscale('log')
 plt.title('CCW')
 plt.xlabel('f [Hz]')
-plt.ylabel('PSD [(m/s^2)^2/Hz]')
+plt.ylabel('PSD [V^2/Hz]')
+plt.xlim(0,2500)
 
 plt.show()
