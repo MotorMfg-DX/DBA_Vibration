@@ -1,3 +1,6 @@
+# グラフの保存
+# 読み込みの自動化
+
 import numpy as np
 from nptdms import TdmsFile
 from nptdms import tdms
@@ -10,8 +13,8 @@ wf_increment = 0.0001953125     # Time Resolution (Setting)
 num_sample = 5120       # Number of Samplings
 
 ### read tdms file ###
-filename = '00401324.tdms'
-tdms_file = TdmsFile.read(filename)
+filename = 'No4_Filter'
+tdms_file = TdmsFile.read(filename + '.tdms')
 df_actwave = tdms_file.as_dataframe(time_index=False)
 df_actwave.columns = ['CW', 'CCW']
 
@@ -29,15 +32,18 @@ plt.plot(df_actwave['Time'], df_actwave['CW'])
 plt.title('CW')
 plt.xlabel('Time [sec]')
 plt.ylabel('Output [V]')
-# plt.ylim(-2, 2)
+plt.xlim(0, 1)
+# plt.ylim(-1, 1)
 
 plt.subplot(2, 1, 2)
 plt.plot(df_actwave['Time'], df_actwave['CCW'])
 plt.title('CCW')
 plt.xlabel('Time [sec]')
 plt.ylabel('Output [V]')
-# plt.ylim(-2, 2)
+plt.xlim(0, 1)
+# plt.ylim(-1, 1)
 
+plt.savefig(filename + '_actwave.png')
 # plt.show()
 
 ### FFT ###
@@ -70,24 +76,24 @@ df_0padding_wave['CW'] = df_0padding_wave['CW'] * acf_CW
 df_0padding_wave['CCW'] = df_0padding_wave['CCW'] * acf_CCW
 
 ### Show vibration graphs after padding ###
-plt.figure()
-plt.subplots_adjust(wspace=0.4, hspace=0.6)
+# plt.figure()
+# plt.subplots_adjust(wspace=0.4, hspace=0.6)
 
-plt.subplot(2, 1, 1)
-plt.plot(df_0padding_wave['Time'], df_0padding_wave['CW'])
-plt.title('CW')
-plt.xlabel('Time [sec]')
-plt.ylabel('Output [V]')
-# plt.ylim(-2, 2)
+# plt.subplot(2, 1, 1)
+# plt.plot(df_0padding_wave['Time'], df_0padding_wave['CW'])
+# plt.title('CW')
+# plt.xlabel('Time [sec]')
+# plt.ylabel('Output [V]')
+# # plt.ylim(-2, 2)
 
-plt.subplot(2, 1, 2)
-plt.plot(df_0padding_wave['Time'], df_0padding_wave['CCW'])
-plt.title('CCW')
-plt.xlabel('Time [sec]')
-plt.ylabel('Output [V]')
-# plt.ylim(-2, 2)
+# plt.subplot(2, 1, 2)
+# plt.plot(df_0padding_wave['Time'], df_0padding_wave['CCW'])
+# plt.title('CCW')
+# plt.xlabel('Time [sec]')
+# plt.ylabel('Output [V]')
+# # plt.ylim(-2, 2)
 
-# plt.show()
+# # plt.show()
 
 # FFT
 df_fft = pd.DataFrame(columns=['freq', 'CW', 'CCW', 'CW_PSD', 'CCW_PSD'])     # CW_PSD, CCW_PSDはPSD
@@ -129,6 +135,8 @@ plt.title('CW')
 plt.xlabel('f [Hz]')
 plt.ylabel('PSD [V^2/Hz]')
 plt.xlim(0,2500)
+# plt.ylim(10**-11, 10**-2)
+plt.text(2000, 10**-3, format(POA_CW, '.4f'))
 
 plt.subplot(2, 1, 2)
 plt.plot(df_fft.iloc[1: int(padding_num_sample / 2), [0]], df_fft.iloc[1: int(padding_num_sample / 2), [4]])
@@ -137,5 +145,8 @@ plt.title('CCW')
 plt.xlabel('f [Hz]')
 plt.ylabel('PSD [V^2/Hz]')
 plt.xlim(0,2500)
+# plt.ylim(10**-11, 10**-2)
+plt.text(2000, 10**-3, format(POA_CCW, '.4f'))
 
+plt.savefig(filename + '_PSDwave.png')
 plt.show()
