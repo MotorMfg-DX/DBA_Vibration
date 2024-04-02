@@ -1,6 +1,5 @@
 # OK/NGでの処理の分岐はできていない
-# 読み込みの自動化
-# 平均処理
+# peakの検出
 
 import numpy as np
 from nptdms import TdmsFile
@@ -20,13 +19,8 @@ padding_num_sample = 8192       # Number of samling for FFT = 2^13
 padding_total_T = wf_increment * num_sample * (padding_num_sample / num_sample)        # new measuring time domain after 0 padding [s]
 fft_fs = padding_num_sample / padding_total_T     # Sampling rate after 0 padding [Hz]
 padding_dt = 1 / fft_fs     # Time resolution after 0 padding [s]
-
-### FFT ###
-# 窓関数を用いない。0パディングしてそのままの波形が連続であると仮定する。
-# 実波形に原因不明のオフセットが発生しているため、0パディングではなく波形の平均値で埋める。
-# 設備で使用している窓関数(Hanning)が狙っている周波数特性に対して適切かどうか不明なため。
-# 対称の周波数特性を整理した上で窓関数の吟味を行う。
-# 今回はFFT→OAと計算していくので、周波数領域における振幅値が重要になる。
+cnt = 0    # File count
+f_ave = True       # Average flag
 
 def read_tdms_file(filename):
     """ tdmsファイルを読み込んで波形を取得する"""
@@ -51,7 +45,7 @@ def plot_actwave(df_actwave, filename, ylim=None, ext='png'):
     """ filename: str, 保存ファイル名(拡張子なし) """
     """ ylim: list, y軸の範囲(min, max) """
     """ ext: str, 保存ファイルの拡張子 """
-    plt.figure()
+    plt.figure(filename + '_actwave')
     plt.subplots_adjust(wspace=0.4, hspace=0.6)
     plt.subplot(2, 1, 1)
     plt.plot(df_actwave['Time'], df_actwave['CW'])
@@ -143,7 +137,7 @@ def culc_POA(df_fft):
 
     return POA_CW, POA_CCW
 
-def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png'):
+def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png', ylim=None):
     """ FFT結果を描画して保存する """
     """ 引数: """
     """ df_fft: dataframe, FFT結果 """
@@ -151,7 +145,8 @@ def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png'):
     """ POA_CCW: float, CCWのPOA """
     """ filename: str, 保存ファイル名(拡張子なし) """
     """ ext: str, 保存ファイルの拡張子 """
-    plt.figure()
+    """ ylim: list, y軸の範囲(min, max) """
+    plt.figure(filename + '_PSDwave')
     plt.subplots_adjust(wspace=0.4, hspace=0.6)
     plt.subplot(2, 1, 1)
     plt.plot(df_fft.iloc[1: int(padding_num_sample / 2), [0]], df_fft.iloc[1: int(padding_num_sample / 2), [3]])
@@ -160,6 +155,8 @@ def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png'):
     plt.xlabel('f [Hz]')
     plt.ylabel('PSD [V^2/Hz]')
     plt.xlim(0,2500)
+    if ylim != None:
+        plt.ylim(ylim)
     plt.text(2000, 10**-3, format(POA_CW, '.4f'))
     plt.subplot(2, 1, 2)
     plt.plot(df_fft.iloc[1: int(padding_num_sample / 2), [0]], df_fft.iloc[1: int(padding_num_sample / 2), [4]])
@@ -168,24 +165,57 @@ def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png'):
     plt.xlabel('f [Hz]')
     plt.ylabel('PSD [V^2/Hz]')
     plt.xlim(0,2500)
+    if ylim != None:
+        plt.ylim(ylim)
     plt.text(2000, 10**-3, format(POA_CCW, '.4f'))
     plt.savefig(filename + '_PSDwave.' + ext)
 
-### Select folder ###
+### FFT ###
 # Tkinterでフォルダを指定する。
 # フォルダ内のすべてのtdmsファイルを読み込む。
-# そのtdmsで下記の処理を行う。
+# FFTは窓関数を用いない。0パディングしてそのままの波形が連続であると仮定する。
+# 実波形に原因不明のオフセットが発生しているため、0パディングではなく波形の平均値で埋める。
+# 設備で使用している窓関数(Hanning)が狙っている周波数特性に対して適切かどうか不明なため。
+# 対称の周波数特性を整理した上で窓関数の吟味を行う。
+# 今回はFFT→OAと計算していくので、周波数領域における振幅値が重要になる。
+
 root = tk.Tk()
 root.withdraw()
 folder_path = filedialog.askdirectory(title='Select Folder')
+df_actwave_ave = pd.DataFrame(columns=['Time', 'CW', 'CCW'])     # Average actwave
+df_FFT_ave = pd.DataFrame(columns=['freq', 'CW_PSD', 'CCW_PSD'])     # Average FFT
 
 for filename in os.listdir(folder_path):
     if filename.endswith('.tdms'):
-        df_actwave = read_tdms_file(folder_path + '/' + filename)
-        filename = filename.rstrip('.tdms')
-        plot_actwave(df_actwave, filename, ylim=[-1, 1])
-        df_0padding_wave = zero_padding(df_actwave, padding_num_sample, padding_total_T, padding_dt)
-        df_fft = culc_FFT(df_0padding_wave, padding_num_sample, padding_dt)
-        POA_CW, POA_CCW = culc_POA(df_fft)
-        plot_fft(df_fft, POA_CW, POA_CCW, filename)
+        # FFT
+        cnt += 1
+        df_actwave = read_tdms_file(folder_path + '/' + filename)       # Read tdms file
+        filename = filename.rstrip('.tdms')     # Remove extension
+        df_0padding_wave = zero_padding(df_actwave, padding_num_sample, padding_total_T, padding_dt)        # 0 padding
+        df_fft = culc_FFT(df_0padding_wave, padding_num_sample, padding_dt)     # FFT
+        POA_CW, POA_CCW = culc_POA(df_fft)      # Culcrate POA
+
+        # Average
+        if f_ave == True:
+            if cnt == 1:
+                df_actwave_ave = df_actwave.copy()
+                df_FFT_ave = df_fft.copy()
+            else:
+                df_actwave_ave['CW'] = df_actwave_ave['CW'] + df_actwave['CW']
+                df_actwave_ave['CCW'] = df_actwave_ave['CCW'] + df_actwave['CCW']
+                df_FFT_ave['CW_PSD'] = df_FFT_ave['CW_PSD'] + df_fft['CW_PSD']
+                df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] + df_fft['CCW_PSD']
+                df_actwave_ave['CW'] = df_actwave_ave['CW'] / cnt
+                df_actwave_ave['CCW'] = df_actwave_ave['CCW'] / cnt
+                df_FFT_ave['CW_PSD'] = df_FFT_ave['CW_PSD'] / cnt
+                df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] / cnt
+
+        # Plot
+        plot_actwave(df_actwave, filename, ylim=[-1, 1])        # Plot actwave
+        plot_fft(df_fft, POA_CW, POA_CCW, filename, ylim=[10**-8, 10**-2])     # Plot FFT
         plt.show()
+if f_ave == True:
+    POA_CW_ave, POA_CCW_ave = culc_POA(df_FFT_ave)      # Culcrate POA
+    plot_actwave(df_actwave_ave, 'Average', ylim=[-1, 1])        # Plot average actwave
+    plot_fft(df_FFT_ave, POA_CW_ave, POA_CCW_ave, 'Average', ylim=[10**-8, 10**-2])        # Plot average FFT
+    plt.show()
