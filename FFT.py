@@ -1,17 +1,18 @@
 # OK/NGでの処理の分岐はできていない
 # peakの検出
+# コンター図の作成
 
 import numpy as np
 from nptdms import TdmsFile
 from nptdms import tdms
 import pandas as pd
 import matplotlib.pyplot as plt
-import math
 import tkinter as tk
 from tkinter import filedialog
 from scipy.signal import find_peaks
 import os
 
+path = os.getcwd()      # Current directory
 gain = 0.00152587890625     # Gain (Setting)
 wf_increment = 0.0001953125     # Time Resolution (Setting)
 num_sample = 5120       # Number of Samplings
@@ -20,7 +21,9 @@ padding_total_T = wf_increment * num_sample * (padding_num_sample / num_sample) 
 fft_fs = padding_num_sample / padding_total_T     # Sampling rate after 0 padding [Hz]
 padding_dt = 1 / fft_fs     # Time resolution after 0 padding [s]
 cnt = 0    # File count
-f_ave = True       # Average flag
+f_ave = False       # Average flag True: Average ON
+ylim_act = [-2.0, 2.0]      # y axis limit for actwave
+ylim_fft = [10**-9, 10**-1]     # y axis limit for FFT
 
 def read_tdms_file(filename):
     """ tdmsファイルを読み込んで波形を取得する"""
@@ -55,6 +58,8 @@ def plot_actwave(df_actwave, filename, ylim=None, ext='png'):
     plt.xlim(0, 1)
     if ylim != None:
         plt.ylim(ylim)
+        y_step = (np.amax(ylim) - np.amin(ylim)) / 4
+        plt.yticks(np.arange(np.amin(ylim), np.amax(ylim) + y_step, y_step))
     plt.subplot(2, 1, 2)
     plt.plot(df_actwave['Time'], df_actwave['CCW'])
     plt.title('CCW')
@@ -63,6 +68,8 @@ def plot_actwave(df_actwave, filename, ylim=None, ext='png'):
     plt.xlim(0, 1)
     if ylim != None:
         plt.ylim(ylim)
+        y_step = (np.amax(ylim) - np.amin(ylim)) / 4
+        plt.yticks(np.arange(np.amin(ylim), np.amax(ylim) + y_step, y_step))
     plt.savefig(filename + '_actwave.' + ext)
 
 def zero_padding(df_actwave, padding_num_sample, padding_total_T, padding_dt):
@@ -157,7 +164,7 @@ def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png', ylim=None):
     plt.xlim(0,2500)
     if ylim != None:
         plt.ylim(ylim)
-    plt.text(2000, 10**-3, format(POA_CW, '.4f'))
+    plt.text(2000, 10**-2, format(POA_CW, '.4f'))
     plt.subplot(2, 1, 2)
     plt.plot(df_fft.iloc[1: int(padding_num_sample / 2), [0]], df_fft.iloc[1: int(padding_num_sample / 2), [4]])
     plt.yscale('log')
@@ -167,8 +174,36 @@ def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png', ylim=None):
     plt.xlim(0,2500)
     if ylim != None:
         plt.ylim(ylim)
-    plt.text(2000, 10**-3, format(POA_CCW, '.4f'))
+    plt.text(2000, 10**-2, format(POA_CCW, '.4f'))
     plt.savefig(filename + '_PSDwave.' + ext)
+
+def find_peak(df_fft, filename, PSD_height=10**-4, discrete_distance=3, sample_size=2**12):
+    """ FFT結果からピークを検出する """
+    """ 引数: """
+    """ df_fft: dataframe, FFT結果 """
+    """ filename: str, 保存ファイル名(拡張子なし) """
+    """ PSD_height: float, ピークの高さ閾値 """
+    """ discrete_distance: int, ピーク間の最小距離 """
+    """ sample_size: int, サンプル数 """
+    """ 戻り値 """
+    """ df_peak: dataframe, ピーク情報 """
+    df_CW_peak = pd.DataFrame(columns=['CW_freq', 'CW_PSD'])
+    df_CCW_peak = pd.DataFrame(columns=['CCW_freq', 'CCW_PSD'])
+
+    # ピークの取得
+    CW_peak_index, _ = find_peaks(df_fft['CW_PSD'], height=PSD_height, distance=discrete_distance)
+    CCW_peak_index, _ = find_peaks(df_fft['CCW_PSD'], height=PSD_height, distance=discrete_distance)
+    CW_peak_index = CW_peak_index[CW_peak_index < sample_size / 2]      # Sampling theorem
+    CCW_peak_index = CCW_peak_index[CCW_peak_index < sample_size / 2]      # Sampling theorem
+
+    # 1つのデータフレームにまとめる
+    df_CW_peak['CW_freq'] = df_fft.iloc[CW_peak_index, 0]
+    df_CW_peak['CW_PSD'] = df_fft.iloc[CW_peak_index, 3]
+    df_CCW_peak['CCW_freq'] = df_fft.iloc[CCW_peak_index, 0]
+    df_CCW_peak['CCW_PSD'] = df_fft.iloc[CCW_peak_index, 4]
+    df_peak = pd.concat([df_CW_peak, df_CCW_peak], axis=1, sort=False)
+
+    return df_peak
 
 ### FFT ###
 # Tkinterでフォルダを指定する。
@@ -205,17 +240,30 @@ for filename in os.listdir(folder_path):
                 df_actwave_ave['CCW'] = df_actwave_ave['CCW'] + df_actwave['CCW']
                 df_FFT_ave['CW_PSD'] = df_FFT_ave['CW_PSD'] + df_fft['CW_PSD']
                 df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] + df_fft['CCW_PSD']
-                df_actwave_ave['CW'] = df_actwave_ave['CW'] / cnt
-                df_actwave_ave['CCW'] = df_actwave_ave['CCW'] / cnt
-                df_FFT_ave['CW_PSD'] = df_FFT_ave['CW_PSD'] / cnt
-                df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] / cnt
-
+                
         # Plot
-        plot_actwave(df_actwave, filename, ylim=[-1, 1])        # Plot actwave
-        plot_fft(df_fft, POA_CW, POA_CCW, filename, ylim=[10**-8, 10**-2])     # Plot FFT
+        plot_actwave(df_actwave, filename, ylim=ylim_act)        # Plot actwave
+        plot_fft(df_fft, POA_CW, POA_CCW, filename, ylim=ylim_fft)     # Plot FFT
         plt.show()
+
 if f_ave == True:
+    df_actwave_ave['CW'] = df_actwave_ave['CW'] / cnt
+    df_actwave_ave['CCW'] = df_actwave_ave['CCW'] / cnt
+    df_FFT_ave['CW_PSD'] = df_FFT_ave['CW_PSD'] / cnt
+    df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] / cnt
     POA_CW_ave, POA_CCW_ave = culc_POA(df_FFT_ave)      # Culcrate POA
-    plot_actwave(df_actwave_ave, 'Average', ylim=[-1, 1])        # Plot average actwave
-    plot_fft(df_FFT_ave, POA_CW_ave, POA_CCW_ave, 'Average', ylim=[10**-8, 10**-2])        # Plot average FFT
+
+    # ピーク値に関してcsvファイルに書き込む
+    # csvファイルが存在する場合は追記をし、存在しない場合は新規作成する
+    df_peak = find_peak(df_FFT_ave, 'Average_peak')        # Find peak
+    if os.path.isfile(path + '/Average_peak.csv'):
+        df_existing = pd.read_csv(path + '/Average_peak.csv')
+        df_combined = pd.concat([df_existing, df_peak], ignore_index=True, axis=1)      # Combine existing csv and new peak dataframe
+        df_combined.to_csv(path + '/Average_peak.csv', index=False)
+    else:
+        df_peak.to_csv(path + '/Average_peak.csv', index=False)     # Create new peak csv
+
+    # Plot
+    plot_actwave(df_actwave_ave, 'Average', ylim=ylim_act)        # Plot average actwave
+    plot_fft(df_FFT_ave, POA_CW_ave, POA_CCW_ave, 'Average', ylim=ylim_fft)        # Plot average FFT
     plt.show()
