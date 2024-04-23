@@ -1,5 +1,3 @@
-# OK/NGでの処理の分岐はできていない
-# peakの検出
 # コンター図の作成
 
 import numpy as np
@@ -12,7 +10,6 @@ from tkinter import filedialog
 from scipy.signal import find_peaks
 import os
 
-path = os.getcwd()      # Current directory
 gain = 0.00152587890625     # Gain (Setting)
 wf_increment = 0.0001953125     # Time Resolution (Setting)
 num_sample = 5120       # Number of Samplings
@@ -21,7 +18,10 @@ padding_total_T = wf_increment * num_sample * (padding_num_sample / num_sample) 
 fft_fs = padding_num_sample / padding_total_T     # Sampling rate after 0 padding [Hz]
 padding_dt = 1 / fft_fs     # Time resolution after 0 padding [s]
 cnt = 0    # File count
+path = os.getcwd()      # Current directory
+
 f_ave = False       # Average flag True: Average ON
+f_peak = True      # Peak flag True: Peak detect ON
 ylim_act = [-2.0, 2.0]      # y axis limit for actwave
 ylim_fft = [10**-9, 10**-1]     # y axis limit for FFT
 
@@ -187,6 +187,10 @@ def find_peak(df_fft, filename, PSD_height=10**-4, discrete_distance=3, sample_s
     """ sample_size: int, サンプル数 """
     """ 戻り値 """
     """ df_peak: dataframe, ピーク情報 """
+    # ピーク情報を格納するデータフレームを作成
+    df_peak = pd.DataFrame(columns=['freq'])
+    df_peak['freq'] = df_fft['freq']
+    df_peak.set_index('freq', inplace=True)
     df_CW_peak = pd.DataFrame(columns=['CW_freq', 'CW_PSD'])
     df_CCW_peak = pd.DataFrame(columns=['CCW_freq', 'CCW_PSD'])
 
@@ -199,9 +203,12 @@ def find_peak(df_fft, filename, PSD_height=10**-4, discrete_distance=3, sample_s
     # 1つのデータフレームにまとめる
     df_CW_peak['CW_freq'] = df_fft.iloc[CW_peak_index, 0]
     df_CW_peak['CW_PSD'] = df_fft.iloc[CW_peak_index, 3]
+    df_CW_peak.set_index('CW_freq', inplace=True)
     df_CCW_peak['CCW_freq'] = df_fft.iloc[CCW_peak_index, 0]
     df_CCW_peak['CCW_PSD'] = df_fft.iloc[CCW_peak_index, 4]
-    df_peak = pd.concat([df_CW_peak, df_CCW_peak], axis=1, sort=False)
+    df_CCW_peak.set_index('CCW_freq', inplace=True)
+    df_peak = pd.concat([df_peak, df_CW_peak], axis=1)
+    df_peak = pd.concat([df_peak, df_CCW_peak], axis=1)
 
     return df_peak
 
@@ -246,6 +253,18 @@ for filename in os.listdir(folder_path):
         plot_fft(df_fft, POA_CW, POA_CCW, filename, ylim=ylim_fft)     # Plot FFT
         plt.show()
 
+        # Peak
+        if f_peak == True:
+            # ピーク値に関してcsvファイルに書き込む
+            # csvファイルが存在する場合は追記をし、存在しない場合は新規作成する
+            df_peak = find_peak(df_fft, filename)        # Find peak
+            if os.path.isfile(path + '/peak.csv'):
+                df_existing = pd.read_csv(path + '/peak.csv')
+                df_existing.set_index(0)        # Column 1 as index
+                df_combined = pd.concat([df_existing, df_peak], axis=1)      # Combine existing csv and new peak dataframe
+            else:
+                df_peak.to_csv(path + '/peak.csv')     # Create new peak csv
+
 if f_ave == True:
     df_actwave_ave['CW'] = df_actwave_ave['CW'] / cnt
     df_actwave_ave['CCW'] = df_actwave_ave['CCW'] / cnt
@@ -253,15 +272,17 @@ if f_ave == True:
     df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] / cnt
     POA_CW_ave, POA_CCW_ave = culc_POA(df_FFT_ave)      # Culcrate POA
 
-    # ピーク値に関してcsvファイルに書き込む
-    # csvファイルが存在する場合は追記をし、存在しない場合は新規作成する
-    df_peak = find_peak(df_FFT_ave, 'Average_peak')        # Find peak
-    if os.path.isfile(path + '/Average_peak.csv'):
-        df_existing = pd.read_csv(path + '/Average_peak.csv')
-        df_combined = pd.concat([df_existing, df_peak], ignore_index=True, axis=1)      # Combine existing csv and new peak dataframe
-        df_combined.to_csv(path + '/Average_peak.csv', index=False)
-    else:
-        df_peak.to_csv(path + '/Average_peak.csv', index=False)     # Create new peak csv
+    # Peak
+    if f_peak == True:
+        # ピーク値に関してcsvファイルに書き込む
+        # csvファイルが存在する場合は追記をし、存在しない場合は新規作成する
+        df_peak = find_peak(df_fft, filename)        # Find peak
+        if os.path.isfile(path + '/peak.csv'):
+            df_existing = pd.read_csv(path + '/peak.csv')
+            df_existing.set_index(0)        # Column 1 as index
+            df_combined = pd.concat([df_existing, df_peak], axis=1)      # Combine existing csv and new peak dataframe
+        else:
+            df_peak.to_csv(path + '/peak.csv')     # Create new peak csv
 
     # Plot
     plot_actwave(df_actwave_ave, 'Average', ylim=ylim_act)        # Plot average actwave
