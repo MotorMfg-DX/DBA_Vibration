@@ -260,7 +260,6 @@ for filename in os.listdir(folder_path):
             df_peak = find_peak(df_fft, filename)        # Find peak
             if os.path.isfile(path + '/peak.csv'):
                 df_existing = pd.read_csv(path + '/peak.csv')
-                df_existing.set_index(0)        # Column 1 as index
                 df_combined = pd.concat([df_existing, df_peak], axis=1)      # Combine existing csv and new peak dataframe
             else:
                 df_peak.to_csv(path + '/peak.csv')     # Create new peak csv
@@ -279,7 +278,6 @@ if f_ave == True:
         df_peak = find_peak(df_fft, filename)        # Find peak
         if os.path.isfile(path + '/peak.csv'):
             df_existing = pd.read_csv(path + '/peak.csv')
-            df_existing.set_index(0)        # Column 1 as index
             df_combined = pd.concat([df_existing, df_peak], axis=1)      # Combine existing csv and new peak dataframe
         else:
             df_peak.to_csv(path + '/peak.csv')     # Create new peak csv

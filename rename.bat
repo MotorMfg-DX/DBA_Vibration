@@ -1,25 +1,29 @@
 @echo off
 setlocal enabledelayedexpansion
 
-echo ‚±‚Ìƒoƒbƒ`ƒtƒ@ƒCƒ‹‚ÍAw’è‚µ‚½ƒ[ƒNNo‚ğƒtƒ@ƒCƒ‹–¼‚É’Ç‰Á‚µ‚ÄƒŠƒl[ƒ€‚µ‚Ü‚·B
+echo ã“ã®ãƒãƒƒãƒãƒ•ã‚¡ã‚¤ãƒ«ã¯ã€æŒ‡å®šã—ãŸãƒ¯ãƒ¼ã‚¯Noã‚’ãƒ•ã‚¡ã‚¤ãƒ«åã«è¿½åŠ ã—ã¦ãƒªãƒãƒ¼ãƒ ã—ã¾ã™ã€‚
 echo.
 
-set /p input_folder="ƒtƒHƒ‹ƒ_‚ÌƒpƒX‚ğ“ü—Í‚µ‚Ä‚­‚¾‚³‚¢: "
+set /p input_folder="ãƒ•ã‚©ãƒ«ãƒ€ã®ãƒ‘ã‚¹ã‚’å…¥åŠ›ã—ã¦ãã ã•ã„: "
 cd "%input_folder%"
 
-set /p input_workNo="ƒ[ƒNNo‚ğ“ü—Í‚µ‚Ä‚­‚¾‚³‚¢: "
+set /p input_workNo="ãƒ¯ãƒ¼ã‚¯Noã‚’å…¥åŠ›ã—ã¦ãã ã•ã„: "
 echo.
 
-set /a count=0
+rem set /a count=0
+set /a count=510
 
-echo ƒtƒ@ƒCƒ‹‚ÌƒŠƒl[ƒ€‚ğŠJn‚µ‚Ü‚·...
+echo ãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒªãƒãƒ¼ãƒ ã‚’é–‹å§‹ã—ã¾ã™...
 
 for %%F in (*.tdms) do (
-    set /a count+=1
+rem set /a count+=1
+    set /a count+=100
     set filename=%%~nF
     set extension=%%~xF
-    ren %%F No!input_workNo!_ST1_R!count!_!filename!!extension!
+rem    ren %%F No!input_workNo!_ST1_R!count!_!filename!!extension!
+    ren %%F No!input_workNo!_rpm!count!_!filename!!extension!
+    echo !filename!
 )
 
-echo ƒtƒ@ƒCƒ‹‚ÌƒŠƒl[ƒ€‚ªŠ®—¹‚µ‚Ü‚µ‚½B
+echo ãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒªãƒãƒ¼ãƒ ãŒå®Œäº†ã—ã¾ã—ãŸã€‚
 pause
