@@ -1,5 +1,3 @@
-# OK/NGでの処理の分岐はできていない
-# peakの検出
 # コンター図の作成
 
 import numpy as np
@@ -7,12 +5,13 @@ from nptdms import TdmsFile
 from nptdms import tdms
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import tkinter as tk
 from tkinter import filedialog
 from scipy.signal import find_peaks
 import os
+import re
 
-path = os.getcwd()      # Current directory
 gain = 0.00152587890625     # Gain (Setting)
 wf_increment = 0.0001953125     # Time Resolution (Setting)
 num_sample = 5120       # Number of Samplings
@@ -20,8 +19,14 @@ padding_num_sample = 8192       # Number of samling for FFT = 2^13
 padding_total_T = wf_increment * num_sample * (padding_num_sample / num_sample)        # new measuring time domain after 0 padding [s]
 fft_fs = padding_num_sample / padding_total_T     # Sampling rate after 0 padding [Hz]
 padding_dt = 1 / fft_fs     # Time resolution after 0 padding [s]
-cnt = 0    # File count
+cnt = 0    # File count of average
+contour_cnt = 0     # File count of contour
+path = os.getcwd()      # Current directory
+
 f_ave = False       # Average flag True: Average ON
+f_peak = False      # Peak flag True: Peak detect ON
+f_plot_graph = True     # Plot graph flag True: Plot graph ON
+f_contour = True        # Contour flag True: Making Contour Map ON
 ylim_act = [-2.0, 2.0]      # y axis limit for actwave
 ylim_fft = [10**-9, 10**-1]     # y axis limit for FFT
 
@@ -31,6 +36,7 @@ def read_tdms_file(filename):
     """ filename: str, tdmsファイル(拡張子込で指定) """
     """ 戻り値 """
     """ df_actwave[CW, CCW]: dataframe """
+
     tdms_file = TdmsFile.read(filename)
     df_actwave = tdms_file.as_dataframe(time_index=False)
     df_actwave.columns = ['CW', 'CCW']
@@ -48,6 +54,7 @@ def plot_actwave(df_actwave, filename, ylim=None, ext='png'):
     """ filename: str, 保存ファイル名(拡張子なし) """
     """ ylim: list, y軸の範囲(min, max) """
     """ ext: str, 保存ファイルの拡張子 """
+
     plt.figure(filename + '_actwave')
     plt.subplots_adjust(wspace=0.4, hspace=0.6)
     plt.subplot(2, 1, 1)
@@ -82,6 +89,7 @@ def zero_padding(df_actwave, padding_num_sample, padding_total_T, padding_dt):
     """ padding_dt: float, 0パディング後の時間分解能 """
     """ 戻り値 """
     """ df_0padding_wave: dataframe, 0パディング後の波形 """
+
     df_0padding = pd.DataFrame(index=range(padding_num_sample - num_sample), columns=['Time', 'CW', 'CCW'])
     df_0padding.fillna({'Time': 0, 'CW':df_actwave['CW'].mean(), 'CCW':df_actwave['CCW'].mean()}, inplace=True)
     df_0padding_wave = df_actwave.copy()
@@ -108,6 +116,7 @@ def culc_FFT(df_0padding_wave, padding_num_sample, padding_dt):
     """ padding_dt: float, 0パディング後の時間分解能 """
     """ 戻り値 """
     """ df_fft: dataframe, FFT結果 """
+
     df_fft = pd.DataFrame(columns=['freq', 'CW', 'CCW', 'CW_PSD', 'CCW_PSD'])     # CW_PSD, CCW_PSDはPSD
     df_fft['CW'] = np.fft.fft(df_0padding_wave['CW'], axis=0)
     df_fft['CCW'] = np.fft.fft(df_0padding_wave['CCW'], axis=0)
@@ -123,6 +132,7 @@ def culc_POA(df_fft):
     """ 戻り値 """
     """ POA_CW: float, CWのPOA """
     """ POA_CCW: float, CCWのPOA """
+
     POA_CW = 0
     POA_CCW = 0
     l_freq = []
@@ -153,6 +163,7 @@ def plot_fft(df_fft, POA_CW, POA_CCW, filename, ext='png', ylim=None):
     """ filename: str, 保存ファイル名(拡張子なし) """
     """ ext: str, 保存ファイルの拡張子 """
     """ ylim: list, y軸の範囲(min, max) """
+    
     plt.figure(filename + '_PSDwave')
     plt.subplots_adjust(wspace=0.4, hspace=0.6)
     plt.subplot(2, 1, 1)
@@ -187,6 +198,11 @@ def find_peak(df_fft, filename, PSD_height=10**-4, discrete_distance=3, sample_s
     """ sample_size: int, サンプル数 """
     """ 戻り値 """
     """ df_peak: dataframe, ピーク情報 """
+
+    # ピーク情報を格納するデータフレームを作成
+    df_peak = pd.DataFrame(columns=['freq'])
+    df_peak['freq'] = df_fft['freq']
+    df_peak.set_index('freq', inplace=True)
     df_CW_peak = pd.DataFrame(columns=['CW_freq', 'CW_PSD'])
     df_CCW_peak = pd.DataFrame(columns=['CCW_freq', 'CCW_PSD'])
 
@@ -199,11 +215,112 @@ def find_peak(df_fft, filename, PSD_height=10**-4, discrete_distance=3, sample_s
     # 1つのデータフレームにまとめる
     df_CW_peak['CW_freq'] = df_fft.iloc[CW_peak_index, 0]
     df_CW_peak['CW_PSD'] = df_fft.iloc[CW_peak_index, 3]
+    df_CW_peak.set_index('CW_freq', inplace=True)
     df_CCW_peak['CCW_freq'] = df_fft.iloc[CCW_peak_index, 0]
     df_CCW_peak['CCW_PSD'] = df_fft.iloc[CCW_peak_index, 4]
-    df_peak = pd.concat([df_CW_peak, df_CCW_peak], axis=1, sort=False)
+    df_CCW_peak.set_index('CCW_freq', inplace=True)
+    df_peak = pd.concat([df_peak, df_CW_peak], axis=1)
+    df_peak = pd.concat([df_peak, df_CCW_peak], axis=1)
 
     return df_peak
+
+class ContourMap:
+    """ コンター図を作成する """
+    """ x軸: 周波数、y軸: 回転数、z軸: PSD """
+    """ 引数: """
+    """ df_fft: dataframe, FFT結果。初期値は最高回転数のデータを使い、光回転数順でz_append()を用いてデータを追加すること。 """
+    """ filename: str, 保存ファイル名(拡張子なし) """
+
+    def __init__(self, df_fft, filename):
+        self.x = np.array(df_fft['freq'])
+        self.y = self.extract_rpm(filename)
+        self.z_CW = np.array(df_fft['CW_PSD'])
+        self.z_CCW = np.array(df_fft['CCW_PSD'])
+
+    def extract_rpm(self, s):
+        """ ファイル名から回転数を抽出する """
+        """ 引数: """
+        """ s: str, ファイル名 """
+        """ 戻り値 """
+        """ rpm: array[int], 回転数 """
+
+        rpm = re.search(r'rpm(\d+)', s)
+        if rpm != None:
+            rpm = int(rpm.group(1))       # 回転数の抽出とint型へのキャスト
+            rpm = np.array([rpm])       # numpy配列への変換
+        else:
+            print('"rpm" is not found in the filename')
+        
+        return rpm
+
+    def rpm_append(self, filename):
+        """ filenameに含まれる回転数を抽出し、self.rpmの末尾に追加する """
+        """ 引数: """
+        """ filename: str, 保存ファイル名(拡張子なし) """
+
+        new_rpm = self.extract_rpm(filename)
+        self.y = np.append(self.y, new_rpm)
+
+    def z_append(self, df_fft):
+        """ df_fftからデータを抽出し、self.zの末尾に追加する """
+        """ 引数: """
+        """ df_fft: dataframe, FFT結果 """
+
+        self.z_CW = np.vstack([self.z_CW, df_fft['CW_PSD'].to_numpy()])
+        self.z_CCW = np.vstack([self.z_CCW, df_fft['CCW_PSD'].to_numpy()])
+
+    def plot_contour(self, ext='png', ylim=None):
+        """ コンター図を描画して保存する """
+        """ 引数: """
+        """ ext: str, 保存ファイルの拡張子 """
+        """ ylim: list, z軸の範囲(min, max) """
+
+        plt.figure('ContourMap')
+        plt.subplots_adjust(wspace=0.4, hspace=0.6)
+        X, Y = np.meshgrid(self.x, self.y)        # 2次元メッシュグリッドの作成
+
+        plt.subplot(2, 1, 1)        # CWのコンター図設定
+
+        # ylimが指定されている場合はylimを利用してz軸の範囲を指定する
+        if ylim != None:
+            plt.contourf(X, Y, self.z_CW, cmap='rainbow', norm=colors.LogNorm(vmin=ylim[0], vmax=ylim[1]))
+        else:
+            plt.contourf(X, Y, self.z_CW, cmap='rainbow', norm=colors.LogNorm())
+        
+        plt.colorbar(label='PSD [V^2/Hz]')
+        plt.title('CW')
+        plt.xlabel('f [Hz]')
+        plt.ylabel('N [rpm]')
+        plt.xlim(0, 2500)
+
+        plt.subplot(2, 1, 2)        # CCWのコンター図設定
+        
+        # ylimが指定されている場合はylimを利用してz軸の範囲を指定する
+        if ylim != None:
+            plt.contourf(X, Y, self.z_CCW, cmap='rainbow', norm=colors.LogNorm(vmin=ylim[0], vmax=ylim[1]))
+        else:
+            plt.contourf(X, Y, self.z_CCW, cmap='rainbow', norm=colors.LogNorm())
+        
+        plt.colorbar(label='PSD [V^2/Hz]')
+        plt.title('CCW')
+        plt.xlabel('f [Hz]')
+        plt.ylabel('N [rpm]')
+        plt.xlim(0, 2500)
+
+        plt.savefig('ContourMap.' + ext)
+        plt.show()
+
+def natural_keys(text):
+    """ 文字列を自然数でソートするためのキーを生成する """
+    """ 引数: """
+    """ text: str, ソート対象の文字列 """
+    """ 戻り値 """
+    """ key: list, ソートキー """
+
+    def atoi(text):
+        return int(text) if text.isdigit() else text
+
+    return [atoi(c) for c in re.split('(\d+)', text)]
 
 ### FFT ###
 # Tkinterでフォルダを指定する。
@@ -220,7 +337,7 @@ folder_path = filedialog.askdirectory(title='Select Folder')
 df_actwave_ave = pd.DataFrame(columns=['Time', 'CW', 'CCW'])     # Average actwave
 df_FFT_ave = pd.DataFrame(columns=['freq', 'CW_PSD', 'CCW_PSD'])     # Average FFT
 
-for filename in os.listdir(folder_path):
+for filename in sorted(os.listdir(folder_path),key=natural_keys, reverse=True if f_contour else False):
     if filename.endswith('.tdms'):
         # FFT
         cnt += 1
@@ -242,10 +359,32 @@ for filename in os.listdir(folder_path):
                 df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] + df_fft['CCW_PSD']
                 
         # Plot
-        plot_actwave(df_actwave, filename, ylim=ylim_act)        # Plot actwave
-        plot_fft(df_fft, POA_CW, POA_CCW, filename, ylim=ylim_fft)     # Plot FFT
-        plt.show()
+        if f_plot_graph == True:
+            plot_actwave(df_actwave, filename, ylim=ylim_act)        # Plot actwave
+            plot_fft(df_fft, POA_CW, POA_CCW, filename, ylim=ylim_fft)     # Plot FFT
+            plt.show()
 
+        # Contour
+        if f_contour == True:
+            contour_cnt += 1
+            if contour_cnt == 1:
+                contour_map = ContourMap(df_fft, filename)
+            else:
+                contour_map.rpm_append(filename)
+                contour_map.z_append(df_fft)
+
+        # Peak
+        if f_peak == True:
+            # ピーク値に関してcsvファイルに書き込む
+            # csvファイルが存在する場合は追記をし、存在しない場合は新規作成する
+            df_peak = find_peak(df_fft, filename)        # Find peak
+            if os.path.isfile(path + '/peak.csv'):
+                df_existing = pd.read_csv(path + '/peak.csv')
+                df_combined = pd.concat([df_existing, df_peak], axis=1)      # Combine existing csv and new peak dataframe
+            else:
+                df_peak.to_csv(path + '/peak.csv')     # Create new peak csv
+
+# Average
 if f_ave == True:
     df_actwave_ave['CW'] = df_actwave_ave['CW'] / cnt
     df_actwave_ave['CCW'] = df_actwave_ave['CCW'] / cnt
@@ -253,17 +392,23 @@ if f_ave == True:
     df_FFT_ave['CCW_PSD'] = df_FFT_ave['CCW_PSD'] / cnt
     POA_CW_ave, POA_CCW_ave = culc_POA(df_FFT_ave)      # Culcrate POA
 
-    # ピーク値に関してcsvファイルに書き込む
-    # csvファイルが存在する場合は追記をし、存在しない場合は新規作成する
-    df_peak = find_peak(df_FFT_ave, 'Average_peak')        # Find peak
-    if os.path.isfile(path + '/Average_peak.csv'):
-        df_existing = pd.read_csv(path + '/Average_peak.csv')
-        df_combined = pd.concat([df_existing, df_peak], ignore_index=True, axis=1)      # Combine existing csv and new peak dataframe
-        df_combined.to_csv(path + '/Average_peak.csv', index=False)
-    else:
-        df_peak.to_csv(path + '/Average_peak.csv', index=False)     # Create new peak csv
+    # Peak
+    if f_peak == True:
+        # ピーク値に関してcsvファイルに書き込む
+        # csvファイルが存在する場合は追記をし、存在しない場合は新規作成する
+        df_peak = find_peak(df_fft, filename)        # Find peak
+        if os.path.isfile(path + '/peak.csv'):
+            df_existing = pd.read_csv(path + '/peak.csv')
+            df_combined = pd.concat([df_existing, df_peak], axis=1)      # Combine existing csv and new peak dataframe
+        else:
+            df_peak.to_csv(path + '/peak.csv')     # Create new peak csv
 
     # Plot
-    plot_actwave(df_actwave_ave, 'Average', ylim=ylim_act)        # Plot average actwave
-    plot_fft(df_FFT_ave, POA_CW_ave, POA_CCW_ave, 'Average', ylim=ylim_fft)        # Plot average FFT
-    plt.show()
+    if f_plot_graph == True:
+        plot_actwave(df_actwave_ave, 'Average', ylim=ylim_act)        # Plot average actwave
+        plot_fft(df_FFT_ave, POA_CW_ave, POA_CCW_ave, 'Average', ylim=ylim_fft)        # Plot average FFT
+        plt.show()
+
+# Contour
+if f_contour == True:
+    contour_map.plot_contour(ylim=ylim_fft)

@@ -10,15 +10,19 @@ cd "%input_folder%"
 set /p input_workNo="ワークNoを入力してください: "
 echo.
 
-set /a count=0
+rem set /a count=0
+set /a count=510
 
 echo ファイルのリネームを開始します...
 
 for %%F in (*.tdms) do (
-    set /a count+=1
+rem set /a count+=1
+    set /a count+=100
     set filename=%%~nF
     set extension=%%~xF
-    ren %%F No!input_workNo!_ST1_R!count!_!filename!!extension!
+rem    ren %%F No!input_workNo!_ST1_R!count!_!filename!!extension!
+    ren %%F No!input_workNo!_rpm!count!_!filename!!extension!
+    echo !filename!
 )
 
 echo ファイルのリネームが完了しました。
